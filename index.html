@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Szita Szekvencia Scanner v1.1</title>
+    <title>Szita Szekvencia Scanner</title>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         * {
@@ -117,7 +117,7 @@
 
         .status-box p {
             font-size: 16px;
-            line-height: 1.5;
+            line-based: 1.5;
         }
 
         .checkmark {
@@ -153,7 +153,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎯 Szita Szekvencia Ellenőrző v1.1</h1>
+        <h1>🎯 Szita Szekvencia Ellenőrző</h1>
         
         <div class="button-group">
             <button id="scanBtn">📷 Scan Start</button>
@@ -164,7 +164,7 @@
 
         <div id="statusBox" class="status-box status-info">
             <h2>Kész az indításra</h2>
-            <p>Nyomd meg a Scan Start gombot.<br>Formátum: <strong>Bopla 7545.01 222</strong></p>
+            <p>Nyomd meg a Scan Start gombot.<br>A kód utolsó 3 számjegye lesz ellenőrizve (min. 221 vagy 222).</p>
         </div>
 
         <div class="hint">💡 Tartsd 15-25 cm távolságra a QR kódot</div>
@@ -180,15 +180,18 @@
         let isScanning = false;
 
         function parseCode(text) {
-            const parts = text.trim().split(/\s+/);
-            if (parts.length < 3) return null;
+            const trimmed = text.trim();
             
-            const prefix = parts.slice(0, -1).join(' ');
-            const sequence = parts[parts.length - 1];
+            // Utolsó 3 karakter kiválasztása
+            if (trimmed.length < 3) return null;
             
-            if (isNaN(sequence)) return null;
+            const last3 = trimmed.slice(-3);
+            const sequence = parseInt(last3);
             
-            return { prefix, sequence: parseInt(sequence), fullText: text };
+            // Ellenőrizzük hogy szám-e és >= 221
+            if (isNaN(sequence) || sequence < 221) return null;
+            
+            return { sequence: sequence, fullText: trimmed };
         }
 
         function showStatus(type, title, message, lastCode = null) {
@@ -215,16 +218,17 @@
             const parsed = parseCode(text);
             
             if (!parsed) {
-                showStatus('error', 'Hibás formátum', `A QR kód tartalma nem megfelelő:<br><strong>${text}</strong><br><br>Helyes formátum: <strong>Bopla 7545.01 222</strong>`);
+                showStatus('error', 'Hibás formátum', `A QR kód utolsó 3 karaktere nem megfelelő:<br><strong>${text}</strong><br><br>Az utolsó 3 karakter szám kell legyen (min. 221).`);
                 return;
             }
 
             const lastData = JSON.parse(localStorage.getItem('lastScan') || 'null');
 
-            if (!lastData || lastData.prefix !== parsed.prefix) {
+            // Első beolvasás
+            if (!lastData) {
                 localStorage.setItem('lastScan', JSON.stringify(parsed));
                 showStatus('success', 'Első beolvasás ✅', 
-                    `<strong>${parsed.fullText}</strong><br><br>Ez az első beolvasás vagy új sorozat kezdete.`,
+                    `<strong>${parsed.fullText}</strong><br><br>Szekvencia: <strong>${parsed.sequence}</strong><br>Ez az első beolvasás.`,
                     parsed.fullText);
                 return;
             }
@@ -238,7 +242,7 @@
                     parsed.fullText);
             } else {
                 showStatus('error', 'Szekvencia hiba! ❌', 
-                    `<strong>Várt:</strong> ${parsed.prefix} ${expected}<br><strong>Kapott:</strong> ${parsed.fullText}<br><br>⚠️ A szekvencia megszakadt!`,
+                    `<strong>Várt:</strong> ...${expected}<br><strong>Kapott:</strong> ${parsed.fullText} (${parsed.sequence})<br><br>⚠️ A szekvencia megszakadt!`,
                     `Utolsó helyes: ${lastData.fullText}`);
             }
         }
@@ -331,7 +335,7 @@
         const savedData = JSON.parse(localStorage.getItem('lastScan') || 'null');
         if (savedData) {
             showStatus('info', 'Folytatás', 
-                `Utolsó beolvasott: <strong>${savedData.fullText}</strong><br><br>Következő várható: <strong>${savedData.prefix} ${savedData.sequence + 1}</strong>`,
+                `Utolsó beolvasott: <strong>${savedData.fullText}</strong><br>Szekvencia: <strong>${savedData.sequence}</strong><br><br>Következő várható: <strong>...${savedData.sequence + 1}</strong>`,
                 savedData.fullText);
         }
     </script>
