@@ -69,12 +69,27 @@
             transform: scale(0.98);
         }
 
+        .video-container {
+            position: relative;
+            display: none;
+            margin-bottom: 20px;
+        }
+
+        .video-container.active {
+            display: block;
+        }
+
         #video {
             width: 100%;
             max-width: 100%;
             border-radius: 12px;
-            display: none;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: border 0.3s;
+        }
+
+        #video.detected {
+            border: 5px solid #34C759;
+            box-shadow: 0 0 20px rgba(52, 199, 89, 0.5);
         }
 
         .status-box {
@@ -117,16 +132,25 @@
             margin-bottom: 10px;
         }
 
-        .hidden {
-            display: none;
-        }
-
         #lastScanned {
             margin-top: 15px;
             padding: 15px;
             background: rgba(255,255,255,0.2);
             border-radius: 8px;
             font-size: 14px;
+        }
+
+        #debugInfo {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #666;
+            border: 1px solid #ddd;
+            font-family: monospace;
+            max-height: 200px;
+            overflow-y: auto;
         }
 
         @media (max-width: 480px) {
@@ -154,33 +178,52 @@
             <button id="resetBtn">🔄 Reset</button>
         </div>
 
-        <video id="video" playsinline></video>
+        <div class="video-container" id="videoContainer">
+            <video id="video" playsinline></video>
+        </div>
 
         <div id="statusBox" class="status-box status-info">
             <h2>Várj a beolvasásra</h2>
             <p>Nyomd meg a Beolvasás gombot és célozd meg a DataMatrix kódot.</p>
         </div>
+
+        <div id="debugInfo"></div>
     </div>
 
     <script>
         const codeReader = new ZXing.BrowserMultiFormatReader();
         const video = document.getElementById('video');
+        const videoContainer = document.getElementById('videoContainer');
         const scanBtn = document.getElementById('scanBtn');
         const resetBtn = document.getElementById('resetBtn');
         const statusBox = document.getElementById('statusBox');
+        const debugInfo = document.getElementById('debugInfo');
         
         let isScanning = false;
         let currentStream = null;
+        let scanCount = 0;
+
+        // Debug log
+        function addDebug(msg) {
+            const time = new Date().toLocaleTimeString();
+            debugInfo.innerHTML += `[${time}] ${msg}<br>`;
+            debugInfo.scrollTop = debugInfo.scrollHeight;
+            console.log(msg);
+        }
 
         // Parse DataMatrix szöveg
         function parseCode(text) {
-            // Példa: "Bopla 7545.01 222"
+            addDebug(`📥 Beolvasott szöveg: "${text}"`);
             const parts = text.trim().split(/\s+/);
-            if (parts.length < 3) return null;
+            if (parts.length < 3) {
+                addDebug(`❌ Hibás formátum: kevesebb mint 3 rész`);
+                return null;
+            }
             
-            const prefix = parts.slice(0, -1).join(' '); // "Bopla 7545.01"
-            const sequence = parts[parts.length - 1]; // "222"
+            const prefix = parts.slice(0, -1).join(' ');
+            const sequence = parts[parts.length - 1];
             
+            addDebug(`✅ Prefix: "${prefix}", Szekvencia: "${sequence}"`);
             return { prefix, sequence: parseInt(sequence) };
         }
 
@@ -211,9 +254,11 @@
                 currentStream.getTracks().forEach(track => track.stop());
                 currentStream = null;
             }
-            video.style.display = 'none';
+            videoContainer.classList.remove('active');
+            video.classList.remove('detected');
             isScanning = false;
             scanBtn.textContent = '📷 Beolvasás';
+            addDebug('📷 Kamera leállítva');
         }
 
         // Scan indítás
@@ -226,28 +271,54 @@
             try {
                 isScanning = true;
                 scanBtn.textContent = '⏹️ Leállítás';
-                video.style.display = 'block';
+                videoContainer.classList.add('active');
                 
-                showStatus('info', 'Kamera indítás...', 'Célozd meg a DataMatrix kódot.');
+                showStatus('info', 'Kamera indítás...', 'Célozd meg a DataMatrix kódot közelről!');
+                addDebug('🎥 Kamera indítása...');
 
                 // Kamera stream indítás
                 currentStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' } 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    } 
                 });
                 video.srcObject = currentStream;
                 video.play();
+                addDebug('✅ Kamera elindult');
 
                 // Folyamatos olvasás
                 codeReader.decodeFromVideoElement(video, (result, err) => {
                     if (result) {
+                        scanCount++;
+                        addDebug(`🎯 Kód észlelve! (#${scanCount})`);
+                        
+                        // Zöld keret
+                        video.classList.add('detected');
+                        
+                        // Rezgés (ha támogatott)
+                        if (navigator.vibrate) {
+                            navigator.vibrate(200);
+                        }
+                        
                         const scannedText = result.text;
-                        processScannedCode(scannedText);
-                        stopCamera();
+                        
+                        // 500ms múlva feldolgozás és leállítás
+                        setTimeout(() => {
+                            processScannedCode(scannedText);
+                            stopCamera();
+                        }, 500);
+                    }
+                    
+                    if (err && !(err instanceof ZXing.NotFoundException)) {
+                        addDebug(`⚠️ Olvasási hiba: ${err.message}`);
                     }
                 });
 
             } catch (err) {
                 console.error('Kamera hiba:', err);
+                addDebug(`❌ HIBA: ${err.message}`);
                 showStatus('error', 'Kamera hiba', 'Nem sikerült elindítani a kamerát. Ellenőrizd az engedélyeket!');
                 stopCamera();
             }
@@ -267,6 +338,7 @@
             // Első beolvasás VAGY új prefix
             if (!lastData || lastData.prefix !== parsed.prefix) {
                 localStorage.setItem('lastScan', JSON.stringify(parsed));
+                addDebug('🟢 Első scan vagy új sorozat');
                 showStatus('success', 'Első beolvasás', 
                     `Szita: <strong>${parsed.prefix} ${parsed.sequence}</strong><br>Ez az első beolvasás vagy új sorozat kezdete.`,
                     `${parsed.prefix} ${parsed.sequence}`);
@@ -275,13 +347,16 @@
 
             // Szekvencia ellenőrzés
             const expected = lastData.sequence + 1;
+            addDebug(`🔍 Ellenőrzés: várható=${expected}, kapott=${parsed.sequence}`);
             
             if (parsed.sequence === expected) {
                 localStorage.setItem('lastScan', JSON.stringify(parsed));
+                addDebug('🟢 Helyes szekvencia!');
                 showStatus('success', 'Helyes szekvencia! ✅', 
                     `Szita: <strong>${parsed.prefix} ${parsed.sequence}</strong><br>Előző: ${lastData.sequence} → Jelenlegi: ${parsed.sequence}`,
                     `${parsed.prefix} ${parsed.sequence}`);
             } else {
+                addDebug('🔴 Hibás szekvencia!');
                 showStatus('error', 'Szekvencia hiba! ❌', 
                     `Várt: <strong>${parsed.prefix} ${expected}</strong><br>Kapott: <strong>${parsed.prefix} ${parsed.sequence}</strong><br><br>A szekvencia nem folytatódik!`,
                     `Utolsó helyes: ${lastData.prefix} ${lastData.sequence}`);
@@ -293,13 +368,17 @@
             if (confirm('Biztosan törölni szeretnéd az összes mentett adatot?')) {
                 localStorage.removeItem('lastScan');
                 stopCamera();
+                debugInfo.innerHTML = '';
+                addDebug('🔄 Reset végrehajtva');
                 showStatus('info', 'Reset kész', 'Minden adat törölve. Kezdheted az új sorozatot!');
             }
         });
 
         // Init
+        addDebug('🚀 Alkalmazás betöltve');
         const savedData = JSON.parse(localStorage.getItem('lastScan') || 'null');
         if (savedData) {
+            addDebug(`💾 Mentett adat betöltve: ${savedData.prefix} ${savedData.sequence}`);
             showStatus('info', 'Folytatás', 
                 `Utolsó beolvasott szita: <strong>${savedData.prefix} ${savedData.sequence}</strong><br>Következő várható: <strong>${savedData.sequence + 1}</strong>`,
                 `${savedData.prefix} ${savedData.sequence}`);
