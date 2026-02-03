@@ -236,7 +236,7 @@ function processScannedCode(text) {
     const parsed = parseCode(text);
     
     if (!parsed) {
-        showStatus('error', 'Hibás formátum', `A QR kód utolsó 3 karaktere nem szám:<br><strong>${text}</strong>`);
+        showStatus('error', 'Hibás formátum', `A kód utolsó 3 karaktere nem szám:<br><strong>${text}</strong>`);
         return;
     }
 
@@ -246,11 +246,11 @@ function processScannedCode(text) {
     if (!lastData) {
         if (parsed.sequence === 221 || parsed.sequence === 222) {
             localStorage.setItem('lastScan', JSON.stringify(parsed));
-            showStatus('success', 'Első beolvasás ✅', 
+            showStatus('success', 'Első beolvasás', 
                 `<strong>${parsed.fullText}</strong><br><br>Szekvencia: <strong>${parsed.sequence}</strong><br>Sorozat elindítva.`,
                 parsed.fullText);
         } else {
-            showStatus('error', 'Hibás kezdő érték! ❌', 
+            showStatus('error', 'Hibás kezdő érték!', 
                 `<strong>${parsed.fullText}</strong> (${parsed.sequence})<br><br>Az első beolvasás <strong>221</strong> vagy <strong>222</strong> kell legyen!`);
         }
         return;
@@ -260,11 +260,11 @@ function processScannedCode(text) {
     
     if (parsed.sequence === expected) {
         localStorage.setItem('lastScan', JSON.stringify(parsed));
-        showStatus('success', 'Helyes szekvencia! ✅', 
+        showStatus('success', 'Helyes szekvencia!', 
             `<strong>${parsed.fullText}</strong><br><br>Előző: ${lastData.sequence} → Jelenlegi: ${parsed.sequence}`,
             parsed.fullText);
     } else {
-        showStatus('error', 'Szekvencia hiba! ❌', 
+        showStatus('error', 'Szekvencia hiba!', 
             `<strong>Várt:</strong> ...${expected}<br><strong>Kapott:</strong> ${parsed.fullText} (${parsed.sequence})<br><br>⚠️ A szekvencia megszakadt!`,
             `Utolsó helyes: ${lastData.fullText}`);
     }
