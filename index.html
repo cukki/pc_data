@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Szita-Művelet Párosító</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body, button, input, select, textarea {
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+
+        body {
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 18px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #scanBtn {
+            background: #34C759;
+            color: white;
+        }
+
+        #scanBtn.scanning {
+            background: #FF3B30;
+        }
+
+        #scanBtn:disabled {
+            background: #999;
+        }
+
+        #resetBtn {
+            background: #FF9500;
+            color: white;
+        }
+
+        #reader {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        #reader.active {
+            display: block;
+        }
+
+        .status-box {
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .status-success {
+            background: #34C759;
+            color: white;
+        }
+
+        .status-error {
+            background: #FF3B30;
+            color: white;
+        }
+
+        .status-info {
+            background: white;
+            color: #333;
+            border: 2px solid #ddd;
+        }
+
+        .status-warning {
+            background: #FF9500;
+            color: white;
+        }
+
+        .status-box h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .status-box p {
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        .checkmark {
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .detail-info {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .detail-info strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .hint {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        #reader__scan_region {
+            border: 3px solid #34C759 !important;
+        }
+
+        #reader__dashboard_section_csr > div:first-child {
+            border: 3px solid #34C759 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Szita-Művelet Párosító</h1>
+        
+        <div class="button-group">
+            <button id="scanBtn">📷 Scan Start</button>
+            <button id="resetBtn">🔄 Reset</button>
+        </div>
+
+        <div id="reader"></div>
+
+        <div id="statusBox" class="status-box status-info">
+            <h2>Kész az indításra</h2>
+            <p>Olvasd be a szitán található kódot (DataMatrix).<br>Első művelet: <strong>221</strong> vagy <strong>222</strong></p>
+        </div>
+
+        <div class="hint">💡 Tartsd 15-25 cm távolságra a kódot</div>
+    </div>
+
+    <!-- Firebase -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js';
+        import { getFirestore, collection, addDoc } from 'https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js';
+
+        // ⚠️ IDE ILLESZD BE A SAJÁT FIREBASE CONFIG-OT!
+        const firebaseConfig = {
+            apiKey: "AIzaSyBaR5GoAtSdG9rfonPxPicxU1qCjkn4HkI",
+            authDomain: "timemonitoring-ku.firebaseapp.com",
+            projectId: "timemonitoring-ku",
+            storageBucket: "timemonitoring-ku.firebasestorage.app",
+            messagingSenderId: "1085277232669",
+            appId: "1:1085277232669:web:27500d6651d66ba12e30f4"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.addDoc = addDoc;
+        window.collection = collection;
+    </script>
+
+    <script>
+        const scanBtn = document.getElementById('scanBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const statusBox = document.getElementById('statusBox');
+        const readerDiv = document.getElementById('reader');
+        
+        let html5QrCode = null;
+        let isScanning = false;
+        
+        // Állapot kezelés
+        let state = {
+            phase: 'WAITING_DATAMATRIX',  // WAITING_DATAMATRIX | WAITING_CODE128 | IDLE
+            datamatrix: null,
+            munka_id: null,
+            lastSequence: null,
+            startTime: null
+        };
+
+        // Parse DataMatrix
+        function parseDataMatrix(text) {
+            const trimmed = text.trim();
+            if (trimmed.length < 3) return null;
+            
+            const last3 = trimmed.slice(-3);
+            const muvelet_id = parseInt(last3);
+            
+            if (isNaN(muvelet_id)) return null;
+            
+            const munka_id = trimmed.slice(0, -3).trim();
+            
+            return { 
+                munka_id, 
+                muvelet_id, 
+                fullText: trimmed 
+            };
+        }
+
+        // Parse Code128
+        function parseCode128(text) {
+            const trimmed = text.trim();
+            if (trimmed.length < 3) return null;
+            
+            const last3 = trimmed.slice(-3);
+            const muvelet_id = parseInt(last3);
+            
+            if (isNaN(muvelet_id)) return null;
+            
+            const megrendeles_id = trimmed.slice(0, -3);
+            
+            return { 
+                megrendeles_id, 
+                muvelet_id, 
+                fullText: trimmed 
+            };
+        }
+
+        function showStatus(type, title, message, details = null) {
+            statusBox.className = `status-box status-${type}`;
+            
+            let icon = '';
+            if (type === 'success') icon = '<div class="checkmark">✅</div>';
+            if (type === 'error') icon = '<div class="checkmark">❌</div>';
+            if (type === 'warning') icon = '<div class="checkmark">⚠️</div>';
+            
+            let detailsHTML = '';
+            if (details) {
+                detailsHTML = `<div class="detail-info">${details}</div>`;
+            }
+            
+            statusBox.innerHTML = `
+                ${icon}
+                <h2>${title}</h2>
+                <p>${message}</p>
+                ${detailsHTML}
+            `;
+        }
+
+        async function logToFirebase(data) {
+            try {
+                await window.addDoc(window.collection(window.db, 'pairings'), {
+                    ...data,
+                    timestamp: new Date()
+                });
+                console.log('✅ Adatok mentve Firebase-be');
+            } catch (error) {
+                console.error('❌ Firebase hiba:', error);
+            }
+        }
+
+        async function processDataMatrix(text) {
+            const parsed = parseDataMatrix(text);
+            
+            if (!parsed) {
+                showStatus('error', 'Hibás formátum', 
+                    `A DataMatrix kód utolsó 3 karaktere nem szám:<br><strong>${text}</strong>`);
+                return;
+            }
+
+            // Első beolvasás ellenőrzés
+            if (state.lastSequence === null) {
+                if (parsed.muvelet_id !== 221 && parsed.muvelet_id !== 222) {
+                    showStatus('error', 'Hibás kezdő művelet!', 
+                        `Az első művelet <strong>221</strong> vagy <strong>222</strong> kell legyen!<br>Kapott: <strong>${parsed.muvelet_id}</strong>`);
+                    return;
+                }
+            } else {
+                // Szekvencia ellenőrzés
+                const expected = state.lastSequence + 1;
+                if (parsed.muvelet_id !== expected) {
+                    showStatus('error', 'Szekvencia hiba!', 
+                        `Várt művelet: <strong>${expected}</strong><br>Kapott: <strong>${parsed.muvelet_id}</strong>`);
+                    return;
+                }
+            }
+
+            // DataMatrix mentése
+            state.datamatrix = parsed;
+            state.munka_id = parsed.munka_id;
+            state.phase = 'WAITING_CODE128';
+            state.startTime = new Date();
+
+            showStatus('info', 'Szita kód beolvasva ✅', 
+                `Olvasd be a művelet vonalkódját (Code128)`,
+                `<strong>Munka:</strong> ${parsed.munka_id}<br><strong>Várható művelet:</strong> ${parsed.muvelet_id}`);
+        }
+
+        async function processCode128(text) {
+            const parsed = parseCode128(text);
+            
+            if (!parsed) {
+                showStatus('error', 'Hibás vonalkód formátum', 
+                    `A Code128 utolsó 3 karaktere nem szám:<br><strong>${text}</strong>`);
+                return;
+            }
+
+            // Match ellenőrzés
+            if (parsed.muvelet_id !== state.datamatrix.muvelet_id) {
+                const details = `<strong>DataMatrix művelet:</strong> ${state.datamatrix.muvelet_id}<br>` +
+                               `<strong>Code128 művelet:</strong> ${parsed.muvelet_id}<br>` +
+                               `<strong>Vonalkód:</strong> ${parsed.fullText}`;
+                
+                await logToFirebase({
+                    munka_id: state.munka_id,
+                    megrendeles_id: parsed.megrendeles_id,
+                    muvelet_id: state.datamatrix.muvelet_id,
+                    datamatrix: state.datamatrix.fullText,
+                    code128: parsed.fullText,
+                    match_status: 'error',
+                    error_message: `Művelet nem egyezik: ${state.datamatrix.muvelet_id} vs ${parsed.muvelet_id}`
+                });
+                
+                showStatus('error', 'Művelet nem egyezik! ❌', 
+                    `A DataMatrix és Code128 művelet száma eltér!`, details);
+                
+                // Reset DataMatrix, új párosítás kell
+                state.phase = 'WAITING_DATAMATRIX';
+                state.datamatrix = null;
+                return;
+            }
+
+            // Sikeres párosítás
+            const elapsedTime = Math.round((new Date() - state.startTime) / 1000);
+            
+            await logToFirebase({
+                munka_id: state.munka_id,
+                megrendeles_id: parsed.megrendeles_id,
+                muvelet_id: state.datamatrix.muvelet_id,
+                datamatrix: state.datamatrix.fullText,
+                code128: parsed.fullText,
+                match_status: 'success',
+                elapsed_seconds: elapsedTime
+            });
+
+            const details = `<strong>Munka:</strong> ${state.munka_id}<br>` +
+                           `<strong>Megrendelés:</strong> ${parsed.megrendeles_id}<br>` +
+                           `<strong>Művelet:</strong> ${state.datamatrix.muvelet_id}<br>` +
+                           `<strong>Párosítási idő:</strong> ${elapsedTime}s`;
+
+            showStatus('success', 'Sikeres párosítás! ✅', 
+                `A két kód sikeresen össze lett párosítva.<br><br>Következő művelet: <strong>${state.datamatrix.muvelet_id + 1}</strong><br>Olvasd be a szitán található kódot.`,
+                details);
+
+            // Következő szekvencia
+            state.lastSequence = state.datamatrix.muvelet_id;
+            state.phase = 'WAITING_DATAMATRIX';
+            state.datamatrix = null;
+        }
+
+        function processScannedCode(text) {
+            if (state.phase === 'WAITING_DATAMATRIX') {
+                processDataMatrix(text);
+            } else if (state.phase === 'WAITING_CODE128') {
+                processCode128(text);
+            }
+        }
+
+        scanBtn.addEventListener('click', async () => {
+            if (isScanning) {
+                try {
+                    await html5QrCode.stop();
+                    html5QrCode.clear();
+                } catch (err) {
+                    console.log('Stop error:', err);
+                }
+                readerDiv.classList.remove('active');
+                scanBtn.textContent = '📷 Scan Start';
+                scanBtn.classList.remove('scanning');
+                isScanning = false;
+                return;
+            }
+
+            try {
+                isScanning = true;
+                scanBtn.textContent = '⏹️ Stop Scan';
+                scanBtn.classList.add('scanning');
+                readerDiv.classList.add('active');
+
+                html5QrCode = new Html5Qrcode("reader");
+
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0
+                };
+
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText, decodedResult) => {
+                        if (navigator.vibrate) {
+                            navigator.vibrate([100, 50, 100]);
+                        }
+                        
+                        html5QrCode.stop().then(() => {
+                            html5QrCode.clear();
+                            readerDiv.classList.remove('active');
+                            scanBtn.textContent = '📷 Scan Start';
+                            scanBtn.classList.remove('scanning');
+                            isScanning = false;
+                            
+                            processScannedCode(decodedText);
+                        });
+                    },
+                    (errorMessage) => {}
+                );
+
+            } catch (err) {
+                console.error('Scanner error:', err);
+                showStatus('error', 'Kamera hiba', 'Nem sikerült elindítani a kamerát!');
+                readerDiv.classList.remove('active');
+                scanBtn.textContent = '📷 Scan Start';
+                scanBtn.classList.remove('scanning');
+                isScanning = false;
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            if (confirm('Biztosan törölni szeretnéd a mentett adatokat?')) {
+                state = {
+                    phase: 'WAITING_DATAMATRIX',
+                    datamatrix: null,
+                    munka_id: null,
+                    lastSequence: null,
+                    startTime: null
+                };
+                
+                if (isScanning && html5QrCode) {
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        readerDiv.classList.remove('active');
+                        scanBtn.textContent = '📷 Scan Start';
+                        scanBtn.classList.remove('scanning');
+                        isScanning = false;
+                    });
+                }
+                
+                showStatus('info', 'Reset kész', 'Olvasd be a szitán található kódot (DataMatrix).<br>Első művelet: <strong>221</strong> vagy <strong>222</strong>');
+            }
+        });
+    </script>
+</body>
+</html>
