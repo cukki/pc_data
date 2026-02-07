@@ -1,0 +1,366 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Szita Szekvencia Scanner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+button, input, select, textarea {
+    font-family: 'Outfit', sans-serif;
+}
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 18px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        #scanBtn {
+            background: #34C759;
+            color: white;
+        }
+
+        #scanBtn.scanning {
+            background: #FF3B30;
+        }
+
+        #resetBtn {
+            background: #FF9500;
+            color: white;
+        }
+
+        #reader {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        #reader.active {
+            display: block;
+        }
+
+        .status-box {
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .status-success {
+            background: #34C759;
+            color: white;
+        }
+
+        .status-error {
+            background: #FF3B30;
+            color: white;
+        }
+
+        .status-info {
+            background: white;
+            color: #333;
+            border: 2px solid #ddd;
+        }
+
+        .status-box h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .status-box p {
+            font-size: 16px;
+            line-based: 1.5;
+        }
+
+        .checkmark {
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        #lastScanned {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .hint {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        /* html5-qrcode CSS override */
+        #reader__scan_region {
+            border: 3px solid #34C759 !important;
+        }
+
+        #reader__dashboard_section_csr > div:first-child {
+            border: 3px solid #34C759 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>1bit-es Szita Szekvencia Ellenőrző</h1>
+        
+        <div class="button-group">
+            <button id="scanBtn">📷 Scan Start</button>
+            <button id="resetBtn">🔄 Reset</button>
+        </div>
+
+        <div id="reader"></div>
+
+        <div id="statusBox" class="status-box status-info">
+            <h2>Kész az indításra</h2>
+            <p>Nyomd meg a Scan Start gombot.<br>A kód utolsó 3 számjegye lesz ellenőrizve (min. 221 vagy 222).</p>
+        </div>
+
+     <!---   <div class="hint">💡 Tartsd 15-25 cm távolságra a QR kódot</div>  --->
+    </div>
+
+    <script>
+        const scanBtn = document.getElementById('scanBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const statusBox = document.getElementById('statusBox');
+        const readerDiv = document.getElementById('reader');
+        
+        let html5QrCode = null;
+        let isScanning = false;
+
+        function parseCode(text) {
+            const trimmed = text.trim();
+            
+            // Utolsó 3 karakter kiválasztása
+            if (trimmed.length < 3) return null;
+            
+            const last3 = trimmed.slice(-3);
+            const sequence = parseInt(last3);
+            
+            // Ellenőrizzük hogy szám-e és >= 221
+            if (isNaN(sequence) || sequence < 221) return null;
+            
+            return { sequence: sequence, fullText: trimmed };
+        }
+
+        function showStatus(type, title, message, lastCode = null) {
+            statusBox.className = `status-box status-${type}`;
+            
+            let icon = '';
+            if (type === 'success') icon = '<div class="checkmark">✅</div>';
+            if (type === 'error') icon = '<div class="checkmark">❌</div>';
+            
+            let lastInfo = '';
+            if (lastCode) {
+                lastInfo = `<div id="lastScanned"><strong>Beolvasva:</strong> ${lastCode}</div>`;
+            }
+            
+            statusBox.innerHTML = `
+                ${icon}
+                <h2>${title}</h2>
+                <p>${message}</p>
+                ${lastInfo}
+            `;
+        }
+
+function parseCode(text) {
+    const trimmed = text.trim();
+    
+    // Utolsó 3 karakter kiválasztása
+    if (trimmed.length < 3) return null;
+    
+    const last3 = trimmed.slice(-3);
+    const sequence = parseInt(last3);
+    
+    // Ellenőrizzük hogy szám-e
+    if (isNaN(sequence)) return null;
+    
+    return { sequence: sequence, fullText: trimmed };
+}
+
+function processScannedCode(text) {
+    const parsed = parseCode(text);
+    
+    if (!parsed) {
+        showStatus('error', 'Hibás formátum', `A kód utolsó 3 karaktere nem szám:<br><strong>${text}</strong>`);
+        return;
+    }
+
+    const lastData = JSON.parse(localStorage.getItem('lastScan') || 'null');
+
+    // Első beolvasás - CSAK 221 vagy 222
+    if (!lastData) {
+        if (parsed.sequence === 221 || parsed.sequence === 222) {
+            localStorage.setItem('lastScan', JSON.stringify(parsed));
+            showStatus('success', 'Első beolvasás', 
+                `<strong>${parsed.fullText}</strong><br><br>Szekvencia: <strong>${parsed.sequence}</strong><br>Sorozat elindítva.`,
+                parsed.fullText);
+        } else {
+            showStatus('error', 'Hibás kezdő érték!', 
+                `<strong>${parsed.fullText}</strong> (${parsed.sequence})<br><br>Az első beolvasás <strong>221</strong> vagy <strong>222</strong> kell legyen!`);
+        }
+        return;
+    }
+
+    const expected = lastData.sequence + 1;
+    
+    if (parsed.sequence === expected) {
+        localStorage.setItem('lastScan', JSON.stringify(parsed));
+        showStatus('success', 'Helyes szekvencia!', 
+            `<strong>${parsed.fullText}</strong><br><br>Előző: ${lastData.sequence} → Jelenlegi: ${parsed.sequence}`,
+            parsed.fullText);
+    } else {
+        showStatus('error', 'Szekvencia hiba!', 
+            `<strong>Várt:</strong> ...${expected}<br><strong>Kapott:</strong> ${parsed.fullText} (${parsed.sequence})<br><br>⚠️ A szekvencia megszakadt!`,
+            `Utolsó helyes: ${lastData.fullText}`);
+    }
+}
+
+        scanBtn.addEventListener('click', async () => {
+            if (isScanning) {
+                // Stop scanning
+                try {
+                    await html5QrCode.stop();
+                    html5QrCode.clear();
+                } catch (err) {
+                    console.log('Stop error:', err);
+                }
+                readerDiv.classList.remove('active');
+                scanBtn.textContent = '📷 Scan Start';
+                scanBtn.classList.remove('scanning');
+                isScanning = false;
+                return;
+            }
+
+            // Start scanning
+            try {
+                isScanning = true;
+                scanBtn.textContent = '⏹️ Stop Scan';
+                scanBtn.classList.add('scanning');
+                readerDiv.classList.add('active');
+
+                html5QrCode = new Html5Qrcode("reader");
+
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0
+                };
+
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText, decodedResult) => {
+                        // Sikeres beolvasás
+                        if (navigator.vibrate) {
+                            navigator.vibrate([100, 50, 100]);
+                        }
+                        
+                        // Automatikus stop
+                        html5QrCode.stop().then(() => {
+                            html5QrCode.clear();
+                            readerDiv.classList.remove('active');
+                            scanBtn.textContent = '📷 Scan Start';
+                            scanBtn.classList.remove('scanning');
+                            isScanning = false;
+                            
+                            processScannedCode(decodedText);
+                        });
+                    },
+                    (errorMessage) => {
+                        // Scanning folyamatos hiba (nem kell kezelni)
+                    }
+                );
+
+            } catch (err) {
+                console.error('Scanner error:', err);
+                showStatus('error', 'Kamera hiba', 'Nem sikerült elindítani a kamerát!');
+                readerDiv.classList.remove('active');
+                scanBtn.textContent = '📷 Scan Start';
+                scanBtn.classList.remove('scanning');
+                isScanning = false;
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            if (confirm('Biztosan törölni szeretnéd a mentett adatokat?')) {
+                localStorage.removeItem('lastScan');
+                
+                if (isScanning && html5QrCode) {
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        readerDiv.classList.remove('active');
+                        scanBtn.textContent = '📷 Scan Start';
+                        scanBtn.classList.remove('scanning');
+                        isScanning = false;
+                    });
+                }
+                
+                showStatus('info', 'Adatok törölve', 'Nyomd meg a Scan Start gombot az új sorozat indításához.');
+            }
+        });
+
+        // Init
+        const savedData = JSON.parse(localStorage.getItem('lastScan') || 'null');
+        if (savedData) {
+            showStatus('info', 'Folytatás', 
+                `Utolsó beolvasott: <strong>${savedData.fullText}</strong><br>Szekvencia: <strong>${savedData.sequence}</strong><br><br>Következő várható: <strong>...${savedData.sequence + 1}</strong>`,
+                savedData.fullText);
+        }
+    </script>
+</body>
+</html>
