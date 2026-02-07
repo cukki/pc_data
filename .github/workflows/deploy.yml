@@ -11,21 +11,32 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
       - name: Replace API Key
-        run: |
-          sed -i 's/YOUR_API_KEY_HERE/${{ secrets.FIREBASE_API_KEY }}/g' index.html
-      
-      - name: Deploy to GitHub Pages
+        run: sed -i 's/YOUR_API_KEY_HERE/${{ secrets.FIREBASE_API_KEY }}/g' index.html
+      - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .
-          force_orphan: true
 ```
 
+**FONTOS:**
+- NE nyomj TAB-ot, csak SPACE!
+- Másolás után nézd meg nincs-e extra sor a végén
 
+---
+
+### **4. Commit:**
+```
+Commit new file
+```
+
+---
+
+### **5. Ellenőrzés:**
+```
+Actions → Legutóbbi workflow
+→ ✅ vagy ❌?
